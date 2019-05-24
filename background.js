@@ -6,17 +6,12 @@ chrome.runtime.onInstalled.addListener(function (object) {
 	}
 });
 
-var override = false;
 var onYoutube = false;
 var timeLeft = 1800;
 var currentTab;
 // chrome.storage.local.set({"lastDate":null}); //for debugging
 
 checkReset();
-
-chrome.storage.local.get({"override":override}, function(data) {
-	override = data.override;
-});
 
 chrome.storage.local.get({"timeLeft":timeLeft}, function(data) {
 	var time = data.timeLeft;
@@ -34,13 +29,9 @@ chrome.tabs.onActivated.addListener(function(activeInfo) {
 	chrome.tabs.get(activeInfo.tabId, function(tab){
 		currentTab = tab;
 		if (isYoutube(tab.url) && !onYoutube) {
-			if (!override) {
-				onYoutube = true;
-				startTime();	
-			} else {
-				checkOverride(tab.url);
-			}
-		} else if (!isYoutube(tab.url) && onYoutube && !override) {
+			onYoutube = true;
+			startTime();
+		} else if (!isYoutube(tab.url) && onYoutube) {
 			onYoutube = false;
 			stopTime();
 		}
@@ -48,17 +39,14 @@ chrome.tabs.onActivated.addListener(function(activeInfo) {
 });
 
 chrome.tabs.onUpdated.addListener(function(tabId, changedInfo, tab) {
+	console.log('tabs event received');
 	checkReset();
 	if(tab.active && changedInfo.url){
 		currentTab = tab;
 		if (isYoutube(changedInfo.url) && !onYoutube) {
-			if (!override) {
-				onYoutube = true;
-				startTime();	
-			} else {
-				checkOverride(changedInfo.url);
-			}
-		} else if (!isYoutube(changedInfo.url) && onYoutube && !override) {
+			onYoutube = true;
+			startTime();
+		} else if (!isYoutube(changedInfo.url) && onYoutube) {
 			onYoutube = false;
 			stopTime();
 		}
@@ -66,14 +54,20 @@ chrome.tabs.onUpdated.addListener(function(tabId, changedInfo, tab) {
 });
 
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+	console.log('runtime event received');
 	if (request.msg == "override") {
-		override = request.value;
-		// console.log("override")
-		chrome.storage.local.set({"override":request.value, "tempOverride":true}, function() {
-			chrome.runtime.sendMessage({
-				msg: "goToSavedVideo"
-			});			
-		});
+		const minutes = request.value;
+		if (minutes && minutes > 0) {
+			chrome.storage.local.set({"timeLeft": minutes*60}, function() {
+				timeLeft = minutes*60;
+				chrome.runtime.sendMessage({
+					msg: "timeLimitUpdated"
+				});
+				chrome.runtime.sendMessage({
+					msg: "goToSavedVideo"
+				});
+			});
+		}
 	} else if (request.msg == "checkReset") {
 		checkReset();
 	} else if (request.msg == "timeLimitUpdated") {
@@ -172,15 +166,12 @@ function checkReset() {
 		today.setHours(0,0,0,0);
 		if (!data.lastDate || today.toString() != data.lastDate) {
 			chrome.storage.local.get({"timeLimit":30}, function(data) {
-
-				chrome.storage.local.set({"lastDate":today.toString(), "override":false, "timeLeft":data.timeLimit*60}, function () {
+				chrome.storage.local.set({"lastDate":today.toString(), "timeLeft":data.timeLimit*60}, function () {
 					chrome.runtime.sendMessage({
 						msg: "checkDone"
 					});
 				});
-				override = false;
 				timeLeft = data.timeLimit*60;
-
 			});
 
 		} else {
@@ -188,29 +179,6 @@ function checkReset() {
 				msg: "checkDone"
 			});
 		}
-	});
-}
-
-function checkOverride(url) {
-	// console.log("check override")
-	// checks if youtube page navigated to has been allowed
-	// if not, user will be redirected back to block page
-
-	// allows user to override and go back to most recent video
-	// but not go to any other videos
-	chrome.storage.local.get({savedVideoURL:"", tempOverride:false}, function(data) {
-		// console.log("current url: " + url);
-		// console.log("allowed url: " + data.savedVideoURL);
-
-		if (urlNoTime(url) != urlNoTime(data.savedVideoURL) || !data.tempOverride) {
-		// if url doesn't match one that was saved or tempoverride isn't true
-		
-			chrome.storage.local.set({savedVideoURL: currentTab.url, tempOverride: false}, function() {
-				chrome.tabs.update(currentTab.id, {url: "/pages/blocked.html"});
-			});
-
-		}
-
 	});
 }
 

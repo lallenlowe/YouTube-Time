@@ -7,12 +7,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 		chrome.storage.local.get("timeLeft", function(data) {
 			$("#time").text(formatTime(data.timeLeft) + " remaining")
 		});
-
-		chrome.storage.local.get("override", function(data) {
-			if (data.override) {
-				$("#override").show();
-			}
-		});
 	}
 });
 
